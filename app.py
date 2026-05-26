@@ -1,42 +1,30 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import joblib
 
+# page setup
 st.set_page_config(
-    page_title="Healthcare Analysis Dashboard",
+    page_title="Heart Disease Dashboard",
     layout="wide"
 )
 
-# Load model
-model = joblib.load(
-    "model.pkl"
-)
+# load files
+model = joblib.load("model.pkl")
+df = pd.read_csv("data/heart_disease_clean.csv")
 
-# Load data
-@st.cache_data
-def load_data():
-    return pd.read_csv(
-        "data/heart_disease_clean.csv"
-    )
+# title
+st.title("Heart Disease Analytics Dashboard")
 
-df = load_data()
+# sidebar inputs
+st.sidebar.header("Patient Information")
 
-# Sidebar
-st.sidebar.title(
-    "Prediction Inputs"
-)
-
-age = st.sidebar.slider(
-    "Age",
-    20,
-    90,
-    45
-)
+age = st.sidebar.slider("Age", 20, 90, 45)
 
 sex = st.sidebar.selectbox(
     "Sex",
-    ["Male","Female"]
+    ["Male", "Female"]
 )
 
 cp = st.sidebar.selectbox(
@@ -63,91 +51,157 @@ thalach = st.sidebar.slider(
     150
 )
 
-# Encoding
-sex_encoded = 1 if sex=="Male" else 0
+# encoding
 
-cp_mapping = {
+sex_map = {
+    "Male":1,
+    "Female":0
+}
+
+cp_map = {
     "Typical Angina":1,
     "Atypical Angina":2,
     "Non-anginal Pain":3,
     "Asymptomatic":4
 }
 
-cp_encoded = cp_mapping[cp]
+# tabs
 
-# Prediction
-if st.sidebar.button(
-    "Predict Risk"
-):
+tab1, tab2 = st.tabs([
+    "Prediction",
+    "Analytics"
+])
 
-    prediction = model.predict(
-        [[
+# prediction tab
+
+with tab1:
+
+    st.subheader("Heart Disease Prediction")
+
+    if st.button("Predict"):
+
+        input_data = [[
             age,
-            sex_encoded,
-            cp_encoded,
+            sex_map[sex],
+            cp_map[cp],
             chol,
             thalach
         ]]
-    )[0]
 
-    probability = model.predict_proba(
-        [[
-            age,
-            sex_encoded,
-            cp_encoded,
-            chol,
-            thalach
-        ]]
-    )[0][1]
+        prediction = model.predict(
+            input_data
+        )[0]
 
-    if prediction==1:
+        probability = model.predict_proba(
+            input_data
+        )[0][1]
 
-        st.error(
-            f"HIGH RISK — Probability: {probability*100:.1f}%"
+        if prediction == 1:
+            st.error(
+                f"High Risk ({probability*100:.1f}%)"
+            )
+        else:
+            st.success(
+                f"Low Risk ({probability*100:.1f}%)"
+            )
+
+        # gauge chart
+
+        fig = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=probability*100,
+                title={
+                    "text":"Risk Score"
+                },
+                gauge={
+                    "axis":{
+                        "range":[0,100]
+                    },
+                    "steps":[
+                        {
+                            "range":[0,40],
+                            "color":"green"
+                        },
+                        {
+                            "range":[40,70],
+                            "color":"orange"
+                        },
+                        {
+                            "range":[70,100],
+                            "color":"red"
+                        }
+                    ]
+                }
+            )
         )
 
-    else:
-
-        st.success(
-            f"LOW RISK — Probability: {probability*100:.1f}%"
+        st.plotly_chart(
+            fig,
+            use_container_width=True
         )
 
-# Dashboard
-st.title(
-    " Heart Disease Analysis Dashboard"
-)
+        st.markdown("### Patient Summary")
 
-col1,col2,col3 = st.columns(3)
+        st.write(
+            f"Age: {age}"
+        )
 
-col1.metric(
-    "Patients",
-    len(df)
-)
+        st.write(
+            f"Sex: {sex}"
+        )
 
-col2.metric(
-    "Disease Positive",
-    int(df["target"].sum())
-)
+        st.write(
+            f"Chest Pain: {cp}"
+        )
 
-col3.metric(
-    "Disease Rate",
-    f"{df['target'].mean()*100:.1f}%"
-)
+# analytics tab
 
-fig = px.scatter(
-    df,
-    x="age",
-    y="thalach",
-    color="target",
-    template="plotly_dark"
-)
+with tab2:
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
+    col1, col2, col3 = st.columns(3)
 
-if st.checkbox(
-    "Show Dataset"
-):
-    st.dataframe(df)
+    col1.metric(
+        "Patients",
+        len(df)
+    )
+
+    col2.metric(
+        "Disease Cases",
+        int(df["target"].sum())
+    )
+
+    col3.metric(
+        "Disease Rate",
+        f"{df['target'].mean()*100:.1f}%"
+    )
+
+    scatter = px.scatter(
+        df,
+        x="age",
+        y="thalach",
+        color="target",
+        title="Age vs Max Heart Rate"
+    )
+
+    st.plotly_chart(
+        scatter,
+        use_container_width=True
+    )
+
+    chest_pain_chart = px.bar(
+        df.groupby("cp")["target"]
+        .mean()
+        .reset_index(),
+        x="cp",
+        y="target",
+        title="Disease Rate by Chest Pain"
+    )
+
+    st.plotly_chart(
+        chest_pain_chart,
+        use_container_width=True
+    )
+
+    if st.checkbox("Show Dataset"):
+        st.dataframe(df)
